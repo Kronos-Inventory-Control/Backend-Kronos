@@ -1,6 +1,7 @@
 from sqlalchemy import Column, Integer, String
+from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.orm import relationship
-from app.core.database import Base
+from app.infrastructure.database.base import Base
 
 
 class Categoria(Base):
