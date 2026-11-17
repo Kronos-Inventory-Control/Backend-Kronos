@@ -12,7 +12,7 @@ class GarantiaBitacora(Base):
     idBitacoras: Mapped[int] = mapped_column(
         Integer,
         primary_key=True,
-        autoincrement=True,
+        autoincrement=False,
         comment="Identificador único de cada registro de seguimiento de una garantía.",
     )
 
