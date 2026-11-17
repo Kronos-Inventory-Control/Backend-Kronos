@@ -11,6 +11,7 @@ from app.models.movimiento import Movimiento
 from app.models.orden_compra import OrdenCompra
 from app.models.proveedor import Proveedor
 from app.models.rol import Rol
+from app.models.sesion_usuario import SesionUsuario
 from app.models.unidad_venta import UnidadVenta
 from app.models.usuario import Usuario
 from app.models.venta import Venta
@@ -29,6 +30,7 @@ __all__ = [
     "OrdenCompra",
     "Proveedor",
     "Rol",
+    "SesionUsuario",
     "UnidadVenta",
     "Usuario",
     "Venta",
