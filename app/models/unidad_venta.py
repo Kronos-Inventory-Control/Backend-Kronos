@@ -20,4 +20,7 @@ class UnidadVenta(Base):
         comment="Nombre de la unidad de medida.",
     )
 
-    materiales = relationship("Inventario", back_populates="unidad_medida")
+    materiales = relationship(
+        "Inventario",
+        back_populates="unidadMedida"
+    )
