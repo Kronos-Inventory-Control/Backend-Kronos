@@ -1,5 +1,5 @@
 from sqlalchemy import Integer, String
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.infrastructure.database.base import Base
 
@@ -18,9 +18,4 @@ class UnidadVenta(Base):
         String(45),
         nullable=False,
         comment="Nombre de la unidad de medida.",
-    )
-
-    materiales = relationship(
-        "Inventario",
-        back_populates="unidadMedida"
     )

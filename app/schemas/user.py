@@ -12,6 +12,17 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from app.domain.enums.user_role import UserRole
 
 
+class DireccionResponse(BaseModel):
+    """Dirección del usuario (la devuelve /auth/me)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    barrio: str
+    ciudad: str
+    localidad: str
+    direccionCompleta: str
+
+
 class UserResponse(BaseModel):
     """
     Información pública de un usuario.
@@ -30,3 +41,4 @@ class UserResponse(BaseModel):
     activo: bool
     fechaCreacion: datetime
     fechaActualizacion: datetime
+    direccion: DireccionResponse | None = None

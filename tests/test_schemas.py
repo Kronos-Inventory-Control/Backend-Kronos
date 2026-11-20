@@ -36,3 +36,4 @@ def test_user_response_no_expone_contrasena():
 
     assert data["rol"] == UserRole.SUPER_ADMIN
     assert "contrasena" not in data
+    assert data["direccion"] is None

@@ -13,10 +13,11 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import bearer_scheme, get_current_user
 from app.core.config import settings
 from app.infrastructure.database.session import get_db
+from app.models.direccion import Direccion
 from app.models.sesion_usuario import SesionUsuario
 from app.models.usuario import Usuario
 from app.schemas.auth import LoginRequest, TokenResponse
-from app.schemas.user import UserResponse
+from app.schemas.user import DireccionResponse, UserResponse
 from app.services.auth_service import (
     AuthenticationError,
     authenticate_user,
@@ -58,10 +59,17 @@ def login(
 @router.get("/me", response_model=UserResponse)
 def get_my_profile(
     current_user: Usuario = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
-    """Devuelve el perfil del usuario autenticado."""
+    """Devuelve el perfil del usuario autenticado (con su dirección)."""
 
-    return current_user
+    perfil = UserResponse.model_validate(current_user)
+
+    direccion = db.get(Direccion, current_user.direccion_idDireccion)
+    if direccion is not None:
+        perfil.direccion = DireccionResponse.model_validate(direccion)
+
+    return perfil
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)

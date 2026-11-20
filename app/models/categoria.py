@@ -1,5 +1,5 @@
 from sqlalchemy import Integer, String
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.infrastructure.database.base import Base
 
@@ -19,5 +19,3 @@ class Categoria(Base):
         nullable=False,
         comment="Nombre de la categoría.",
     )
-
-    materiales = relationship("Inventario", back_populates="categoria")
