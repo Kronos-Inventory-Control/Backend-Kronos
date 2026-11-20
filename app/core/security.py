@@ -26,4 +26,10 @@ def hash_password(password: str) -> str:
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Comprueba si una contraseña coincide con el hash almacenado."""
 
-    return password_hasher.verify(plain_password, hashed_password)
+    try:
+        return password_hasher.verify(plain_password, hashed_password)
+    except Exception:
+        # Hash con formato desconocido (p. ej. proveedores creados desde el panel
+        # que todavía no tienen contraseña): se trata como credenciales inválidas
+        # en lugar de provocar un error 500.
+        return False

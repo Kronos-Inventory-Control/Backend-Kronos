@@ -19,3 +19,11 @@ class Cliente(Base):
         nullable=False,
         comment="Campo booleano (TINYINT(1)). Funciona como bandera para indicar con un 1 o 0 si el cliente tiene un carrito de compras pendiente o activo.",
     )
+
+    usuario_identificacion: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("usuarios.identificacion", name="fk_cliente_usuario1"),
+        primary_key=True,
+        autoincrement=False,
+        comment="Llave foránea que conecta los atributos de la clase padre.",
+    )

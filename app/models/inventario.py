@@ -2,7 +2,6 @@ from decimal import Decimal
 
 from sqlalchemy import ForeignKey, Integer, Numeric, String
 from sqlalchemy.dialects.mysql import MEDIUMBLOB
-from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.infrastructure.database.base import Base
@@ -80,20 +79,3 @@ class Inventario(Base):
         nullable=False,
         comment="Clave foránea que clasifica el producto en una categoría.",
     )
-    categoria = relationship(
-    "Categoria",
-    back_populates="materiales"
-)
-    categoria = relationship(
-    "Categoria",
-    back_populates="materiales"
-)
-
-    unidadMedida = relationship(
-    "UnidadVenta",
-    back_populates="materiales"
-)
-    marca = relationship(
-    "Marca",
-    back_populates="materiales"
-)
