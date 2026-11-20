@@ -10,7 +10,7 @@ Python 3.12 o superior y MySQL con una base `kronos_inventory`.
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-copy .env.example .env      # luego editar DATABASE_URL con su usuario y contraseña
+copy .env.example .env      # luego editar DATABASE_URL y JWT_SECRET_KEY
 ```
 En la contraseña, `#` se escribe `%23` y `@` se escribe `%40`.
 
@@ -33,3 +33,21 @@ Documentación en `/docs`; estado en `/health` y `/health/ready`.
 pytest
 ```
 Requiere el archivo `.env` creado.
+
+## Autenticación (JWT)
+1. Generar la clave y pegarla en `.env` como `JWT_SECRET_KEY` (no se sube a Git):
+```powershell
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+2. Aplicar la migración de autenticación (agrega `activo`, fechas, SUPER_ADMIN único y la tabla `sesionesUsuario`):
+```powershell
+alembic upgrade head
+```
+3. Crear el único SUPER_ADMIN (rol 5) desde la terminal:
+```powershell
+python -m scripts.create_super_admin
+```
+4. Probar en `/docs`: `POST /api/v1/auth/login` → botón **Authorize** → `GET /api/v1/auth/me` → `POST /api/v1/auth/logout` (204) → `GET /api/v1/auth/me` (401).
+
+Reglas de sesión: token HS256 de 120 min (vencimiento absoluto), 30 min de inactividad, cada sesión tiene un `jti` en MySQL y se revoca individualmente.
+

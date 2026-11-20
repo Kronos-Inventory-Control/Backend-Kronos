@@ -1,6 +1,9 @@
 from fastapi import APIRouter
 
-api_router = APIRouter()
+from app.api.v1.auth import router as auth_router
 
-# En las siguientes fases registraremos aquí los routers de
-# auth, productos, movimientos, proveedores, órdenes, garantías, etc.
+api_router = APIRouter()
+api_router.include_router(auth_router)
+
+# En las siguientes fases registraremos aquí los routers de:
+# productos, movimientos, proveedores, órdenes, garantías, etc.

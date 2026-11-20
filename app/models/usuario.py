@@ -1,4 +1,17 @@
-from sqlalchemy import ForeignKey, Integer, String
+from datetime import datetime
+
+from sqlalchemy import (
+    Boolean,
+    Computed,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    UniqueConstraint,
+    func,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.infrastructure.database.base import Base
@@ -6,6 +19,12 @@ from app.infrastructure.database.base import Base
 
 class Usuario(Base):
     __tablename__ = "usuarios"
+    __table_args__ = (
+        UniqueConstraint("correoElectronico", name="uq_usuarios_correoElectronico"),
+        # Solo puede existir un SUPER_ADMIN (rol 5): la columna generada vale 1
+        # para ese rol y NULL para los demás; MySQL permite varios NULL pero un solo 1.
+        Index("uq_usuarios_super_admin_slot", "super_admin_slot", unique=True),
+    )
 
     identificacion: Mapped[int] = mapped_column(
         Integer,
@@ -56,4 +75,34 @@ class Usuario(Base):
         ForeignKey("direcciones.idDireccion", name="fk_usuario_direccion1"),
         nullable=False,
         comment="Clave foránea que vincula al usuario con su dirección residencial o comercial.",
+    )
+
+    activo: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default=text("1"),
+        comment="Indica si el usuario puede iniciar sesión (1) o está desactivado (0).",
+    )
+
+    fechaCreacion: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        server_default=func.now(),
+        comment="Fecha y hora en que se registró el usuario.",
+    )
+
+    fechaActualizacion: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+        comment="Fecha y hora de la última modificación del usuario.",
+    )
+
+    super_admin_slot: Mapped[int | None] = mapped_column(
+        Integer,
+        Computed("CASE WHEN rol_idRol = 5 THEN 1 ELSE NULL END", persisted=True),
+        nullable=True,
+        comment="Columna generada. Vale 1 solo para el SUPER_ADMIN y, con índice único, garantiza que exista uno solo.",
     )
