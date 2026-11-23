@@ -8,8 +8,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
-from app.api.v1.common import a_iso, ahora, exigir_staff, nombre_completo, ordenar
+from app.api.v1.common import a_iso, ahora, exigir_staff, nombre_completo, ordenar, siguiente_id
+from app.domain.rules.inventario import aplicar_entrada, aplicar_salida, requiere_alerta
 from app.infrastructure.database.session import get_db
+from app.models.alerta import Alerta
 from app.models.inventario import Inventario
 from app.models.movimiento import Movimiento
 from app.models.usuario import Usuario
@@ -54,15 +56,11 @@ def aplicar_movimiento(
     if producto is None:
         raise HTTPException(status_code=404, detail="El producto no existe.")
 
+    # Reglas A1-A5 (app/domain): cantidad > 0, sin stock negativo, entradas suman, salidas restan.
     if tipo == "salida":
-        if producto.stock < cantidad:
-            raise HTTPException(
-                status_code=400,
-                detail=f'Stock insuficiente de "{producto.nombre}": solo hay {producto.stock} disponible(s).',
-            )
-        producto.stock -= cantidad
+        producto.stock = aplicar_salida(producto.stock, cantidad, producto.nombre)
     else:
-        producto.stock += cantidad
+        producto.stock = aplicar_entrada(producto.stock, cantidad)
 
     movimiento = Movimiento(
         fechaMovimiento=ahora(),
@@ -78,7 +76,37 @@ def aplicar_movimiento(
     )
     db.add(movimiento)
     db.flush()
+    _actualizar_alertas(db, producto)
     return movimiento
+
+
+def _actualizar_alertas(db: Session, producto: Inventario) -> None:
+    """
+    Regla A9: al alcanzar el nivel mínimo se genera UNA alerta pendiente por
+    producto; cuando el stock se recupera, las alertas pendientes se marcan atendidas.
+    """
+    pendientes = db.execute(
+        select(Alerta).where(
+            Alerta.inventario_codInventario == producto.id, Alerta.estado == "pendiente"
+        )
+    ).scalars().all()
+
+    if requiere_alerta(producto.stock, producto.umbralMinimo):
+        if not pendientes:
+            mensaje = f"Stock mínimo: {producto.nombre}"
+            db.add(
+                Alerta(
+                    idalertas=siguiente_id(db, Alerta.idalertas),
+                    estado="pendiente",
+                    mensaje=mensaje[:45],
+                    fechaAlerta=ahora(),
+                    inventario_codInventario=producto.id,
+                )
+            )
+            db.flush()
+    else:
+        for alerta in pendientes:
+            alerta.estado = "atendida"
 
 
 class MovimientoIn(BaseModel):

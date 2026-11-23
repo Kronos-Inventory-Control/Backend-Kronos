@@ -21,6 +21,7 @@ from app.models.marca import Marca
 from app.models.proveedor import Proveedor
 from app.models.unidad_venta import UnidadVenta
 from app.models.usuario import Usuario
+from app.repositories.user_repository import UserRepository
 
 SIN_CATEGORIA = "Sin categoría"
 ESTADOS_ORDEN = ("pendiente", "confirmada", "rechazada")
@@ -131,8 +132,7 @@ def ordenar(consulta, columnas: dict, orden: str | None, asc: bool, defecto):
 
 def siguiente_identificacion(db: Session) -> int:
     """Identificación (cédula/NIT interno) para usuarios creados desde la app."""
-    maximo = db.execute(select(func.max(Usuario.identificacion)).with_for_update()).scalar()
-    return max(int(maximo or 0), 999_999) + 1
+    return UserRepository.next_identificacion(db)
 
 
 def proveedor_de(db: Session, usuario: Usuario) -> Proveedor | None:

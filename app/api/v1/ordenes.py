@@ -30,6 +30,8 @@ from app.api.v1.common import (
 )
 from app.api.v1.movimientos import aplicar_movimiento
 from app.domain.enums.user_role import UserRole
+from app.domain.rules.usuarios import proveedor_gestiona_orden
+from app.domain.rules.ventas import validar_linea_venta, validar_venta
 from app.infrastructure.database.session import get_db
 from app.models.cliente import Cliente
 from app.models.detalle_venta import DetalleVenta
@@ -234,6 +236,7 @@ def crear_ordenes(
                     detail="Esta cuenta no está habilitada para compras. Usa una cuenta de cliente.",
                 )
             cliente = obtener_o_crear_cliente(db, usuario)
+            validar_venta(len(body.filas), cliente.idCliente)  # B3 + B6
             venta = Venta(
                 descuento=Decimal("0"),
                 fechaVenta=ahora(),
@@ -249,12 +252,9 @@ def crear_ordenes(
             total = Decimal("0")
             for f in body.filas:
                 producto = _bloquear_producto(db, f.producto_id)
-                if producto.stock < f.cantidad:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f'Stock insuficiente de "{producto.nombre}": solo hay {producto.stock} disponible(s).',
-                    )
                 precio = Decimal(str(f.precio_unitario)) if f.precio_unitario is not None else producto.precioVenta
+                # B1 + B2 + B4 (y A6): cantidad > 0, precio >= 0, hay stock y no está agotado.
+                validar_linea_venta(f.cantidad, precio, producto.stock, producto.nombre)
                 subtotal = precio * f.cantidad
                 total += subtotal
                 detalle = DetalleVenta(
@@ -304,7 +304,10 @@ def actualizar_orden(
             if orden is None:
                 raise HTTPException(status_code=404, detail="La orden no existe.")
             propio = proveedor_de(db, usuario) if usuario.rol_idRol == int(UserRole.PROVEEDOR) else None
-            if not (es_staff(usuario) or (propio and propio.idProveedor == orden.proveedor_idProveedor)):
+            if not (
+                es_staff(usuario)
+                or proveedor_gestiona_orden(propio.idProveedor if propio else None, orden.proveedor_idProveedor)
+            ):  # E4
                 raise HTTPException(status_code=403, detail="No tienes permiso para esta operación.")
             if datos.get("estado"):
                 orden.estado = datos["estado"]
