@@ -46,7 +46,7 @@ class Usuario(Base):
     )
 
     correoElectronico: Mapped[str] = mapped_column(
-        String(45),
+        String(120),
         nullable=False,
         comment="Campo de texto. Registra el email para notificaciones e inicio de sesión.",
     )

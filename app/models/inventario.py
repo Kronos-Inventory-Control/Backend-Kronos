@@ -24,7 +24,7 @@ class Inventario(Base):
     )
 
     nombre: Mapped[str] = mapped_column(
-        String(45),
+        String(120),
         nullable=False,
         comment="Almacena el nombre comercial o descripción del artículo.",
     )
@@ -53,9 +53,9 @@ class Inventario(Base):
         comment="Modelo o especificación técnica del producto.",
     )
 
-    imagenProducto: Mapped[bytes] = mapped_column(
+    imagenProducto: Mapped[bytes | None] = mapped_column(
         MEDIUMBLOB,
-        nullable=False,
+        nullable=True,
         comment="Imagen del producto almacenada en formato binario.",
     )
 
@@ -78,4 +78,10 @@ class Inventario(Base):
         ForeignKey("categorias.idCategoria", name="fk_inventario_categoria1"),
         nullable=False,
         comment="Clave foránea que clasifica el producto en una categoría.",
+    )
+
+    ubicacion: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
+        comment="Ubicación del material dentro de la bodega.",
     )

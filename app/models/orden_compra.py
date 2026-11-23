@@ -60,3 +60,9 @@ class OrdenCompra(Base):
         nullable=False,
         comment="Clave foránea que identifica el producto del inventario incluido en la orden de compra.",
     )
+
+    observacion: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        comment="Observación del proveedor o del jefe al confirmar o rechazar la orden.",
+    )
