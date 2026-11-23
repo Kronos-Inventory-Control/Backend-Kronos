@@ -10,6 +10,7 @@ from app.models.marca import Marca
 from app.models.movimiento import Movimiento
 from app.models.orden_compra import OrdenCompra
 from app.models.proveedor import Proveedor
+from app.models.reporte_generado import ReporteGenerado
 from app.models.rol import Rol
 from app.models.sesion_usuario import SesionUsuario
 from app.models.unidad_venta import UnidadVenta
@@ -29,6 +30,7 @@ __all__ = [
     "Movimiento",
     "OrdenCompra",
     "Proveedor",
+    "ReporteGenerado",
     "Rol",
     "SesionUsuario",
     "UnidadVenta",
