@@ -25,6 +25,16 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 120  # vencimiento absoluto del token
     session_inactivity_minutes: int = 30  # inactividad máxima de la sesión
 
+    # Recuperación de contraseña. Si no hay servidor SMTP configurado, el
+    # enlace se escribe en la consola del backend (útil en desarrollo).
+    frontend_url: str = "http://localhost:5173"
+    reset_token_expire_minutes: int = 30
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

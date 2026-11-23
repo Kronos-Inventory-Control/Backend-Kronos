@@ -27,3 +27,9 @@ class Proveedor(Base):
         autoincrement=False,
         comment="Llave foránea que conecta los atributos de la clase padre.",
     )
+
+    nit: Mapped[str | None] = mapped_column(
+        String(30),
+        nullable=True,
+        comment="NIT o documento tributario del proveedor.",
+    )

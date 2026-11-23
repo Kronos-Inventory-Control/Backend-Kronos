@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.mysql import MEDIUMBLOB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -36,13 +36,13 @@ class Garantia(Base):
     )
 
     observacion: Mapped[str] = mapped_column(
-        String(45),
+        Text,
         nullable=False,
         comment="Términos, condiciones especiales o notas sobre lo que cubre o no cubre la garantía.",
     )
 
     motivo: Mapped[str] = mapped_column(
-        String(45),
+        Text,
         nullable=False,
         comment="Razón por la cual el cliente solicita hacer efectiva la garantía.",
     )
@@ -53,15 +53,44 @@ class Garantia(Base):
         comment="Tipo de daño o defecto presentado por el producto.",
     )
 
-    evidenciaImg: Mapped[bytes] = mapped_column(
+    evidenciaImg: Mapped[bytes | None] = mapped_column(
         MEDIUMBLOB,
-        nullable=False,
+        nullable=True,
         comment="Imagen que sirve como evidencia del daño o falla reportada.",
     )
 
-    detalleventa_idDetalleVenta: Mapped[int] = mapped_column(
+    detalleventa_idDetalleVenta: Mapped[int | None] = mapped_column(
         Integer,
         ForeignKey("detalleVentas.idDetalleVenta", name="fk_garantia_detalleventa1"),
-        nullable=False,
+        nullable=True,
         comment="Clave foránea que relaciona la garantía con el artículo específico registrado en el detalle de la venta.",
+    )
+
+    ordenRef: Mapped[str | None] = mapped_column(
+        String(20), nullable=True,
+        comment="Referencia de la orden (oc-<id> orden a proveedor, dv-<id> pedido de cliente).",
+    )
+    numeroOrden: Mapped[str | None] = mapped_column(
+        String(60), nullable=True, comment="Código de la orden que se muestra al usuario.",
+    )
+    clienteId: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, comment="Identificación del cliente que radicó la solicitud.",
+    )
+    clienteNombre: Mapped[str | None] = mapped_column(
+        String(120), nullable=True, comment="Nombre del cliente o de quien radica la solicitud.",
+    )
+    correo: Mapped[str | None] = mapped_column(
+        String(120), nullable=True, comment="Correo de contacto de la solicitud.",
+    )
+    producto: Mapped[str | None] = mapped_column(
+        String(120), nullable=True, comment="Nombre del producto sobre el que se reclama.",
+    )
+    imagenNombre: Mapped[str | None] = mapped_column(
+        String(255), nullable=True, comment="Nombre del archivo de evidencia que adjuntó el cliente.",
+    )
+    observaciones: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="Historial de observaciones (JSON).",
+    )
+    bitacora: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="Bitácora de acciones de la solicitud (JSON).",
     )

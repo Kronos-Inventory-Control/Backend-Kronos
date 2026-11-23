@@ -19,3 +19,14 @@ class Categoria(Base):
         nullable=False,
         comment="Nombre de la categoría.",
     )
+
+    descripcion: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        comment="Descripción opcional de la categoría (la usa la pantalla de stock).",
+    )
+    icono: Mapped[str | None] = mapped_column(
+        String(45),
+        nullable=True,
+        comment="Nombre del icono con el que se muestra la categoría en el frontend.",
+    )

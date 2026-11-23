@@ -2,9 +2,9 @@ from app.infrastructure.database.base import Base
 import app.models  # noqa: F401  (registra los modelos)
 
 
-def test_metadata_tiene_17_tablas():
-    # 16 tablas originales + sesionesUsuario (fase de autenticación)
-    assert len(Base.metadata.tables) == 17
+def test_metadata_tiene_18_tablas():
+    # 16 originales + sesionesUsuario (autenticación) + reportesGenerados (migración del frontend)
+    assert len(Base.metadata.tables) == 18
 
 
 def test_metadata_tiene_19_llaves_foraneas():

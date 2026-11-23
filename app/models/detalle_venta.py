@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from sqlalchemy import ForeignKey, Integer, Numeric
+from sqlalchemy import ForeignKey, Integer, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.infrastructure.database.base import Base
@@ -46,4 +46,22 @@ class DetalleVenta(Base):
         ForeignKey("inventarios.id", name="fk_detalleVenta_inventario1"),
         nullable=False,
         comment="Clave foránea que descuenta el producto del inventario.",
+    )
+
+    codigo: Mapped[str | None] = mapped_column(
+        String(45),
+        nullable=True,
+        comment="Código del pedido del cliente (ej. PED-123456-1).",
+    )
+    estado: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="pendiente",
+        server_default="pendiente",
+        comment="Estado del pedido: pendiente, confirmada o rechazada.",
+    )
+    observacion: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        comment="Observación del jefe al confirmar o rechazar el pedido.",
     )
