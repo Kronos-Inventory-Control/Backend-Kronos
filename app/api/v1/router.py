@@ -14,6 +14,7 @@ proveedores.py      GET/POST /proveedores · PATCH/DELETE /proveedores/{id}
 ordenes.py          GET/POST /ordenes-compra · PATCH /ordenes-compra/{oc-N | dv-N}
 garantias.py        GET/POST /garantias · PATCH/DELETE /garantias/{id}
 reportes.py         GET/POST /reportes · DELETE /reportes/{id}
+users.py            POST/GET /users · GET/PATCH /users/{id} · PATCH /users/{id}/status   (solo SUPER_ADMIN)
 (health.py)         GET /health · GET /health/ready   (fuera de /api/v1)
 
 Utilidades compartidas (roles, ids, fechas): common.py
@@ -29,6 +30,7 @@ from app.api.v1.movimientos import router as movimientos_router
 from app.api.v1.ordenes import router as ordenes_router
 from app.api.v1.proveedores import router as proveedores_router
 from app.api.v1.reportes import router as reportes_router
+from app.api.v1.users import router as users_router
 
 api_router = APIRouter()
 api_router.include_router(auth_router)
@@ -39,3 +41,4 @@ api_router.include_router(proveedores_router)
 api_router.include_router(ordenes_router)
 api_router.include_router(garantias_router)
 api_router.include_router(reportes_router)
+api_router.include_router(users_router)

@@ -51,3 +51,19 @@ python -m scripts.create_super_admin
 
 Reglas de sesión: token HS256 de 120 min (vencimiento absoluto), 30 min de inactividad, cada sesión tiene un `jti` en MySQL y se revoca individualmente.
 
+## Reglas de negocio (domain)
+Las reglas de inventario, ventas, órdenes de compra, garantías y usuarios/roles están en `app/domain/rules/` (Python puro).
+Los routers y servicios las llaman; los errores (`app/domain/exceptions.py`) se convierten en HTTP 400 (403 si es un permiso).
+Estado de cumplimiento: ver `../REGLAS_DE_NEGOCIO.md`.
+
+## Gestión de usuarios (solo SUPER_ADMIN)
+| Método | Endpoint | Función |
+|--------|----------|---------|
+| POST | `/api/v1/users` | Crear usuario (y su perfil de cliente / proveedor) |
+| GET | `/api/v1/users?rol=3&activo=true` | Listar con filtros por rol y estado |
+| GET | `/api/v1/users/{identificacion}` | Consultar |
+| PATCH | `/api/v1/users/{identificacion}` | Actualizar nombre, apellidos, correo, teléfono (nunca el rol) |
+| PATCH | `/api/v1/users/{identificacion}/status` | Activar / desactivar (al desactivar se revocan sus sesiones) |
+
+Ejemplo (proveedor): `{"nombre":"Luis","apellidos":"Pérez","email":"luis@prov.com","password":"ClaveMuySegura2026","rol":"PROVEEDOR","perfil_proveedor":{"tipoProducto":"Herramientas","nit":"900123"}}`.
+`rol` acepta el nombre (`CLIENTE`, `PROVEEDOR`, `JEFE`, `EMPLEADO`) o su número. No se puede crear otro SUPER_ADMIN.
