@@ -33,6 +33,11 @@ RUTAS_ESPERADAS = {
     ("POST", "/api/v1/auth/change-email"),
     ("POST", "/api/v1/auth/forgot-password"),
     ("POST", "/api/v1/auth/reset-password"),
+    ("POST", "/api/v1/users"),
+    ("GET", "/api/v1/users"),
+    ("GET", "/api/v1/users/{identificacion}"),
+    ("PATCH", "/api/v1/users/{identificacion}"),
+    ("PATCH", "/api/v1/users/{identificacion}/status"),
 }
 
 

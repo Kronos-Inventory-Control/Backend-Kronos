@@ -1,9 +1,11 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.api.health import router as health_router
 from app.api.v1.router import api_router
 from app.core.config import get_settings
+from app.domain.exceptions import PermisoDenegadoError, ReglaDeNegocioError
 
 settings = get_settings()
 
@@ -29,3 +31,15 @@ app.add_middleware(
 
 app.include_router(health_router)
 app.include_router(api_router, prefix=settings.api_v1_prefix)
+
+
+# Las reglas de negocio (app/domain) lanzan errores de Python puro; aquí se
+# convierten en respuestas HTTP con el mismo formato {"detail": "..."}.
+@app.exception_handler(PermisoDenegadoError)
+async def _permiso_denegado(_: Request, exc: PermisoDenegadoError) -> JSONResponse:
+    return JSONResponse(status_code=403, content={"detail": str(exc)})
+
+
+@app.exception_handler(ReglaDeNegocioError)
+async def _regla_de_negocio(_: Request, exc: ReglaDeNegocioError) -> JSONResponse:
+    return JSONResponse(status_code=400, content={"detail": str(exc)})
