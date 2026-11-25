@@ -66,3 +66,11 @@ class UsuarioInvalidoError(ReglaDeNegocioError):
 
 class PermisoDenegadoError(ReglaDeNegocioError):
     """El rol del usuario no permite ejecutar la operación."""
+
+
+class CodigoVerificacionError(ReglaDeNegocioError):
+    """El código de verificación no es válido, venció o se agotaron sus intentos."""
+
+
+class EsperaReenvioError(ReglaDeNegocioError):
+    """Se pidió otro código antes de que termine la espera mínima de reenvío."""
