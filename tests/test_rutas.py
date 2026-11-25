@@ -31,7 +31,9 @@ RUTAS_ESPERADAS = {
     ("PATCH", "/api/v1/auth/me"),
     ("POST", "/api/v1/auth/change-password"),
     ("POST", "/api/v1/auth/change-email"),
+    ("POST", "/api/v1/auth/confirm-email"),
     ("POST", "/api/v1/auth/forgot-password"),
+    ("POST", "/api/v1/auth/verify-reset-code"),
     ("POST", "/api/v1/auth/reset-password"),
     ("POST", "/api/v1/users"),
     ("GET", "/api/v1/users"),
@@ -42,7 +44,12 @@ RUTAS_ESPERADAS = {
 
 
 def _rutas_registradas():
-    return {(m, r.path) for r in app.routes if hasattr(r, "methods") for m in r.methods}
+    # Se lee del esquema OpenAPI (app.routes cambia según la versión de FastAPI).
+    return {
+        (metodo.upper(), ruta)
+        for ruta, operaciones in app.openapi()["paths"].items()
+        for metodo in operaciones
+    }
 
 
 def test_estan_registrados_todos_los_endpoints_de_la_migracion():

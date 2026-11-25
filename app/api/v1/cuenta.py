@@ -5,30 +5,49 @@ y recuperación de contraseña.
 
 import hashlib
 import logging
-import smtplib
 from datetime import datetime, timedelta, timezone
-from email.message import EmailMessage
 
 import jwt
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
 from app.api.v1.common import ahora, obtener_o_crear_cliente, siguiente_identificacion
 from app.core.config import settings
-from app.core.security import hash_password
+from app.core.security import MIN_PASSWORD_LENGTH, hash_password, verify_password
 from app.domain.enums.user_role import UserRole
+from app.domain.exceptions import CodigoVerificacionError, EsperaReenvioError
+from app.domain.rules.usuarios import (
+    CODIGO_VIGENCIA_MINUTOS,
+    MENSAJE_CODIGO_INVALIDO,
+    PROPOSITO_CAMBIAR_CORREO,
+    PROPOSITO_RECUPERAR_PASSWORD,
+    validar_cambio_correo,
+)
 from app.infrastructure.database.session import get_db
 from app.models.direccion import Direccion
 from app.models.sesion_usuario import SesionUsuario
 from app.models.usuario import Usuario
+from app.services.email_service import (
+    CorreoNoEnviadoError,
+    enviar_aviso_cambio_correo,
+    enviar_codigo,
+)
+from app.services.limitador import LimitadorIntentos
+from app.services.verificacion_service import anular_codigos, consumir_codigo, emitir_codigo
 
 router = APIRouter(prefix="/auth", tags=["Cuenta"])
 logger = logging.getLogger("kronos.cuenta")
 
 PROPOSITO_RESET = "password-reset"
+
+limitador_credenciales = LimitadorIntentos()
+# Hash de relleno: así tarda igual tanto si la cédula existe como si no.
+_HASH_RELLENO = hash_password("relleno-para-igualar-tiempos")
+MENSAJE_CREDENCIALES = "La cédula o la contraseña no son correctas."
 
 
 class RegistroIn(BaseModel):
@@ -52,20 +71,32 @@ class PerfilIn(BaseModel):
 
 
 class CambioPasswordIn(BaseModel):
-    nueva: str = Field(min_length=8, max_length=128)
+    nueva: str = Field(min_length=MIN_PASSWORD_LENGTH, max_length=128)
 
 
 class CambioCorreoIn(BaseModel):
-    correo: EmailStr
+    identificacion: int = Field(gt=0)  # cédula: así no hace falta recordar el correo viejo
+    password: str = Field(min_length=1, max_length=128)  # contraseña actual
+    correo: EmailStr  # correo nuevo
+
+
+class ConfirmarCorreoIn(BaseModel):
+    identificacion: int = Field(gt=0)
+    codigo: str = Field(pattern=r"^\d{6}$")
 
 
 class OlvidoIn(BaseModel):
     correo: EmailStr
 
 
+class VerificarCodigoIn(BaseModel):
+    correo: EmailStr
+    codigo: str = Field(pattern=r"^\d{6}$")
+
+
 class ResetIn(BaseModel):
     token: str
-    nueva: str = Field(min_length=8, max_length=128)
+    nueva: str = Field(min_length=MIN_PASSWORD_LENGTH, max_length=128)
 
 
 @router.post("/register", status_code=status.HTTP_201_CREATED, summary="Registro de clientes")
@@ -138,82 +169,148 @@ def cambiar_password(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.post("/change-email", summary="Cambiar el correo de la cuenta")
-def cambiar_correo(
-    body: CambioCorreoIn, db: Session = Depends(get_db), usuario: Usuario = Depends(get_current_user),
-):
-    correo = body.correo.lower()
-    ocupado = db.execute(
+def _correo_ocupado(db: Session, correo: str, excepto_id: int) -> bool:
+    return db.execute(
         select(Usuario.identificacion).where(
-            Usuario.correoElectronico == correo, Usuario.identificacion != usuario.identificacion
+            Usuario.correoElectronico == correo, Usuario.identificacion != excepto_id
         )
-    ).first()
-    if ocupado:
+    ).first() is not None
+
+
+# ------------------------------------------------------------ cambiar correo
+@router.post("/change-email", summary="Paso 1: pedir el cambio de correo (envía un código al correo nuevo)")
+def solicitar_cambio_correo(
+    body: CambioCorreoIn, request: Request, db: Session = Depends(get_db),
+):
+    """No requiere sesión: la persona demuestra quién es con su cédula y su contraseña."""
+    ip = request.client.host if request.client else "desconocida"
+    claves = (f"correo:id:{body.identificacion}", f"correo:ip:{ip}")
+    if limitador_credenciales.bloqueado(*claves):
+        raise HTTPException(status_code=429, detail="Demasiados intentos. Espera 15 minutos e inténtalo de nuevo.")
+
+    usuario = db.get(Usuario, body.identificacion)
+    hash_real = usuario.contrasena if usuario is not None else _HASH_RELLENO
+    clave_ok = verify_password(body.password, hash_real)
+    if usuario is None or not usuario.activo or not clave_ok:
+        limitador_credenciales.registrar_fallo(*claves)
+        raise HTTPException(status_code=400, detail=MENSAJE_CREDENCIALES)
+    limitador_credenciales.limpiar(*claves)
+
+    correo = body.correo.lower()
+    validar_cambio_correo(usuario.correoElectronico, correo)
+    if _correo_ocupado(db, correo, usuario.identificacion):
         raise HTTPException(status_code=409, detail="Ya existe una cuenta con ese correo.")
-    usuario.correoElectronico = correo
-    db.commit()
-    return {"correo": correo}
+
+    try:
+        codigo = emitir_codigo(db, usuario, PROPOSITO_CAMBIAR_CORREO, correo)
+    except EsperaReenvioError as error:
+        raise HTTPException(status_code=429, detail=str(error))
+
+    try:
+        enviar_codigo(correo, codigo, PROPOSITO_CAMBIAR_CORREO)
+    except CorreoNoEnviadoError:
+        anular_codigos(db, usuario, PROPOSITO_CAMBIAR_CORREO)
+        raise HTTPException(
+            status_code=502,
+            detail="No pudimos enviar el correo. Verifica la dirección e inténtalo de nuevo.",
+        )
+    return {"correo": correo, "expira_en_minutos": CODIGO_VIGENCIA_MINUTOS}
+
+
+@router.post("/confirm-email", summary="Paso 2: confirmar el cambio de correo con el código")
+def confirmar_cambio_correo(
+    body: ConfirmarCorreoIn, tareas: BackgroundTasks, db: Session = Depends(get_db),
+):
+    invalido = HTTPException(status_code=400, detail=MENSAJE_CODIGO_INVALIDO)
+    usuario = db.get(Usuario, body.identificacion)
+    if usuario is None or not usuario.activo:
+        raise invalido
+
+    try:
+        registro = consumir_codigo(db, usuario, PROPOSITO_CAMBIAR_CORREO, body.codigo)
+    except CodigoVerificacionError:
+        raise invalido
+
+    nuevo = registro.correoDestino
+    if _correo_ocupado(db, nuevo, usuario.identificacion):
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Ya existe una cuenta con ese correo.")
+
+    anterior = usuario.correoElectronico
+    usuario.correoElectronico = nuevo
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Ya existe una cuenta con ese correo.")
+
+    tareas.add_task(enviar_aviso_cambio_correo, anterior, nuevo)
+    return {"correo": nuevo}
 
 
 # ------------------------------------------------------ recuperar contraseña
 def _huella(usuario: Usuario) -> str:
-    """Huella de la contraseña actual: el enlace deja de servir cuando se usa."""
+    """Huella de la contraseña actual: el token de restablecimiento deja de servir cuando se usa."""
     return hashlib.sha256(usuario.contrasena.encode()).hexdigest()[:16]
 
 
-def _enviar_enlace(correo: str, enlace: str) -> None:
-    if not settings.smtp_host:
-        # Sin servidor de correo (desarrollo): el enlace se muestra en la consola.
-        logger.warning("Enlace de recuperación para %s: %s", correo, enlace)
-        print(f"\n[Kronos] Enlace de recuperación para {correo}:\n{enlace}\n", flush=True)
-        return
-    mensaje = EmailMessage()
-    mensaje["Subject"] = "Recupera tu contraseña de Kronos"
-    mensaje["From"] = settings.smtp_from or settings.smtp_user
-    mensaje["To"] = correo
-    mensaje.set_content(
-        f"Hola,\n\nUsa este enlace para crear una nueva contraseña "
-        f"(vence en {settings.reset_token_expire_minutes} minutos):\n\n{enlace}\n\n"
-        "Si no lo solicitaste, ignora este mensaje."
-    )
+def _enviar_codigo_recuperacion(correo: str, codigo: str) -> None:
     try:
-        with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=15) as servidor:
-            servidor.starttls()
-            if settings.smtp_user:
-                servidor.login(settings.smtp_user, settings.smtp_password)
-            servidor.send_message(mensaje)
-    except Exception:  # no se le revela al usuario si el correo existe o no
-        logger.exception("No se pudo enviar el correo de recuperación")
+        enviar_codigo(correo, codigo, PROPOSITO_RECUPERAR_PASSWORD)
+    except CorreoNoEnviadoError:
+        logger.error("No se pudo enviar el código de recuperación a %s", correo)
 
 
-@router.post("/forgot-password", status_code=status.HTTP_204_NO_CONTENT, summary="Solicitar recuperación")
+@router.post("/forgot-password", status_code=status.HTTP_204_NO_CONTENT, summary="Paso 1: enviar código de recuperación")
 def olvide_contrasena(body: OlvidoIn, tareas: BackgroundTasks, db: Session = Depends(get_db)):
     usuario = db.execute(
         select(Usuario).where(Usuario.correoElectronico == body.correo.lower(), Usuario.activo.is_(True))
     ).scalars().first()
     if usuario is not None:
-        ahora_utc = datetime.now(timezone.utc)
-        token = jwt.encode(
-            {
-                "sub": str(usuario.identificacion),
-                "purpose": PROPOSITO_RESET,
-                "pwd": _huella(usuario),
-                "iat": ahora_utc,
-                "exp": ahora_utc + timedelta(minutes=settings.reset_token_expire_minutes),
-            },
-            settings.jwt_secret_key,
-            algorithm=settings.jwt_algorithm,
-        )
-        enlace = f"{settings.frontend_url.rstrip('/')}/cambiar-contrasena?token={token}"
-        tareas.add_task(_enviar_enlace, usuario.correoElectronico, enlace)
+        try:
+            codigo = emitir_codigo(db, usuario, PROPOSITO_RECUPERAR_PASSWORD, usuario.correoElectronico)
+            tareas.add_task(_enviar_codigo_recuperacion, usuario.correoElectronico, codigo)
+        except EsperaReenvioError:
+            pass  # ya hay un código reciente; la respuesta no cambia
     # Siempre 204: no se revela si el correo está registrado.
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.post("/reset-password", status_code=status.HTTP_204_NO_CONTENT, summary="Crear nueva contraseña")
+@router.post("/verify-reset-code", summary="Paso 2: verificar el código y recibir el permiso para cambiar la contraseña")
+def verificar_codigo_recuperacion(body: VerificarCodigoIn, db: Session = Depends(get_db)):
+    invalido = HTTPException(status_code=400, detail=MENSAJE_CODIGO_INVALIDO)
+    usuario = db.execute(
+        select(Usuario).where(Usuario.correoElectronico == body.correo.lower(), Usuario.activo.is_(True))
+    ).scalars().first()
+    if usuario is None:
+        raise invalido  # mismo mensaje que un código erróneo
+
+    try:
+        consumir_codigo(db, usuario, PROPOSITO_RECUPERAR_PASSWORD, body.codigo)
+    except CodigoVerificacionError:
+        raise invalido
+    db.commit()
+
+    ahora_utc = datetime.now(timezone.utc)
+    vigencia = timedelta(minutes=settings.reset_token_expire_minutes)
+    token = jwt.encode(
+        {
+            "sub": str(usuario.identificacion),
+            "purpose": PROPOSITO_RESET,
+            "pwd": _huella(usuario),
+            "iat": ahora_utc,
+            "exp": ahora_utc + vigencia,
+        },
+        settings.jwt_secret_key,
+        algorithm=settings.jwt_algorithm,
+    )
+    return {"reset_token": token, "expires_in": int(vigencia.total_seconds())}
+
+
+@router.post("/reset-password", status_code=status.HTTP_204_NO_CONTENT, summary="Paso 3: crear la nueva contraseña")
 def restablecer_contrasena(body: ResetIn, db: Session = Depends(get_db)):
     invalido = HTTPException(
-        status_code=400, detail="El enlace no es válido o ya venció. Solicita uno nuevo."
+        status_code=400, detail="La verificación venció. Solicita un código nuevo."
     )
     try:
         datos = jwt.decode(

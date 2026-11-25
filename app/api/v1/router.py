@@ -5,7 +5,8 @@ Archivo             Endpoints
 ------------------  ---------------------------------------------------------------
 auth.py             POST /auth/login · GET /auth/me · POST /auth/logout
 cuenta.py           POST /auth/register · PATCH /auth/me · POST /auth/change-password
-                    POST /auth/change-email · POST /auth/forgot-password
+                    POST /auth/change-email · POST /auth/confirm-email
+                    POST /auth/forgot-password · POST /auth/verify-reset-code
                     POST /auth/reset-password
 catalogo.py         GET/POST /productos · PATCH/DELETE /productos/{id}
                     GET/POST /categorias · POST /categorias/eliminar

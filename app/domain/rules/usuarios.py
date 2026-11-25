@@ -1,9 +1,18 @@
 """E. Usuarios y roles."""
 
 import enum
+import re
+import secrets
+import string
+from datetime import datetime, timedelta
 
 from app.domain.enums.user_role import UserRole
-from app.domain.exceptions import PermisoDenegadoError, UsuarioInvalidoError
+from app.domain.exceptions import (
+    CodigoVerificacionError,
+    EsperaReenvioError,
+    PermisoDenegadoError,
+    UsuarioInvalidoError,
+)
 
 
 class Operacion(enum.Enum):
@@ -106,3 +115,64 @@ def validar_cambio_estado(
         raise UsuarioInvalidoError("No se puede cambiar el estado del SUPER_ADMIN.")
     if id_objetivo == id_actor and not activar:
         raise UsuarioInvalidoError("No puedes desactivar tu propia cuenta.")
+
+
+# --- E6-E8: códigos de verificación por correo -----------------------------
+PROPOSITO_RECUPERAR_PASSWORD = "RECUPERAR_PASSWORD"
+PROPOSITO_CAMBIAR_CORREO = "CAMBIAR_CORREO"
+PROPOSITOS_CODIGO = frozenset({PROPOSITO_RECUPERAR_PASSWORD, PROPOSITO_CAMBIAR_CORREO})
+
+CODIGO_LONGITUD = 6
+CODIGO_VIGENCIA_MINUTOS = 10
+CODIGO_MAX_INTENTOS = 5
+CODIGO_ESPERA_REENVIO_SEGUNDOS = 60
+
+MENSAJE_CODIGO_INVALIDO = "El código no es válido o ya venció. Solicita uno nuevo."
+
+
+def generar_codigo() -> str:
+    """E6: código numérico de 6 dígitos, con generador criptográficamente seguro."""
+    return "".join(secrets.choice(string.digits) for _ in range(CODIGO_LONGITUD))
+
+
+def validar_proposito_codigo(proposito: str) -> None:
+    if proposito not in PROPOSITOS_CODIGO:
+        raise CodigoVerificacionError(f"El propósito «{proposito}» no es válido.")
+
+
+def formato_codigo_valido(codigo: str) -> bool:
+    return re.fullmatch(rf"\d{{{CODIGO_LONGITUD}}}", codigo or "") is not None
+
+
+def calcular_vencimiento(ahora: datetime) -> datetime:
+    """E6: el código vence a los 10 minutos."""
+    return ahora + timedelta(minutes=CODIGO_VIGENCIA_MINUTOS)
+
+
+def validar_espera_reenvio(fecha_ultimo_codigo: datetime | None, ahora: datetime) -> None:
+    """E7: entre un código y el siguiente deben pasar al menos 60 segundos."""
+    if fecha_ultimo_codigo is None:
+        return
+    transcurrido = (ahora - fecha_ultimo_codigo).total_seconds()
+    if transcurrido < CODIGO_ESPERA_REENVIO_SEGUNDOS:
+        faltan = int(CODIGO_ESPERA_REENVIO_SEGUNDOS - transcurrido) + 1
+        raise EsperaReenvioError(f"Espera {faltan} segundos antes de pedir otro código.")
+
+
+def validar_codigo_utilizable(
+    *, usado: bool, intentos: int, vencimiento: datetime, ahora: datetime
+) -> None:
+    """E8: un código solo sirve si no se usó, no venció y no agotó sus intentos."""
+    if usado or intentos >= CODIGO_MAX_INTENTOS or ahora >= vencimiento:
+        raise CodigoVerificacionError(MENSAJE_CODIGO_INVALIDO)
+
+
+def validar_cambio_correo(correo_actual: str, correo_nuevo: str) -> None:
+    """El correo nuevo debe ser distinto del actual."""
+    if correo_actual.strip().lower() == correo_nuevo.strip().lower():
+        raise UsuarioInvalidoError("El nuevo correo debe ser distinto al actual.")
+
+
+# --- E9: límite de intentos fallidos al cambiar el correo sin sesión ---------
+CREDENCIALES_MAX_FALLOS = 5
+CREDENCIALES_VENTANA_MINUTOS = 15

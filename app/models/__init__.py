@@ -1,5 +1,6 @@
 from app.models.alerta import Alerta
 from app.models.categoria import Categoria
+from app.models.codigo_verificacion import CodigoVerificacion
 from app.models.cliente import Cliente
 from app.models.detalle_venta import DetalleVenta
 from app.models.direccion import Direccion
@@ -20,6 +21,7 @@ from app.models.venta import Venta
 __all__ = [
     "Alerta",
     "Categoria",
+    "CodigoVerificacion",
     "Cliente",
     "DetalleVenta",
     "Direccion",

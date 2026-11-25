@@ -67,3 +67,18 @@ Estado de cumplimiento: ver `../REGLAS_DE_NEGOCIO.md`.
 
 Ejemplo (proveedor): `{"nombre":"Luis","apellidos":"Pérez","email":"luis@prov.com","password":"ClaveMuySegura2026","rol":"PROVEEDOR","perfil_proveedor":{"tipoProducto":"Herramientas","nit":"900123"}}`.
 `rol` acepta el nombre (`CLIENTE`, `PROVEEDOR`, `JEFE`, `EMPLEADO`) o su número. No se puede crear otro SUPER_ADMIN.
+
+## Recuperar contraseña y cambiar correo (códigos por correo)
+Aplicar la migración (crea `codigosVerificacion`) y configurar el SMTP en `.env` (ver `.env.example`):
+```powershell
+alembic upgrade head
+```
+| Método | Endpoint | Función |
+|--------|----------|---------|
+| POST | `/api/v1/auth/forgot-password` | `{correo}` → envía código de 6 dígitos (204 siempre) |
+| POST | `/api/v1/auth/verify-reset-code` | `{correo, codigo}` → `{reset_token}` (15 min) |
+| POST | `/api/v1/auth/reset-password` | `{token, nueva}` → cambia la clave y cierra todas las sesiones |
+| POST | `/api/v1/auth/change-email` | (sin sesión) `{identificacion, password, correo}` → envía código al correo NUEVO. 5 fallos de cédula/contraseña = bloqueo de 15 min |
+| POST | `/api/v1/auth/confirm-email` | (sin sesión) `{identificacion, codigo}` → aplica el cambio y avisa al correo anterior |
+
+Reglas (`app/domain/rules/usuarios.py`, E6-E8): código de 6 dígitos, vence a los 10 min, máximo 5 intentos, 60 s entre reenvíos. Solo se guarda la huella HMAC del código. Contraseña nueva: mínimo 12 caracteres.
