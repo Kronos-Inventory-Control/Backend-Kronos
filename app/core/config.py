@@ -25,15 +25,18 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 120  # vencimiento absoluto del token
     session_inactivity_minutes: int = 30  # inactividad máxima de la sesión
 
-    # Recuperación de contraseña. Si no hay servidor SMTP configurado, el
-    # enlace se escribe en la consola del backend (útil en desarrollo).
+    # Correo saliente (códigos de recuperación y cambio de correo).
+    # Con el puerto 465 se usa SSL directo; con cualquier otro (587) STARTTLS.
+    # Sin SMTP_HOST y con DEBUG=true el código se imprime en la consola del
+    # backend (solo desarrollo); con DEBUG=false el envío falla.
     frontend_url: str = "http://localhost:5173"
-    reset_token_expire_minutes: int = 30
+    reset_token_expire_minutes: int = 15  # tiempo para escribir la nueva contraseña tras verificar el código
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_user: str = ""
     smtp_password: str = ""
     smtp_from: str = ""
+    smtp_from_name: str = "Kronos Inventory"
 
     model_config = SettingsConfigDict(
         env_file=".env",
