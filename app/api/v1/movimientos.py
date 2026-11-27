@@ -5,11 +5,12 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
 from app.api.v1.common import a_iso, ahora, exigir_staff, nombre_completo, ordenar, siguiente_id
-from app.domain.rules.inventario import aplicar_entrada, aplicar_salida, requiere_alerta
+from app.domain.rules.inventario import aplicar_salida, requiere_alerta
 from app.infrastructure.database.session import get_db
 from app.models.alerta import Alerta
 from app.models.inventario import Inventario
@@ -22,6 +23,9 @@ TIPOS = {"entrada": 1, "salida": 2}
 ORDEN_MOV = {"fecha": Movimiento.fechaMovimiento, "cantidad": Movimiento.cantidad}
 
 
+# ---------------------------------------------------------------------------
+# Utilidades
+# ---------------------------------------------------------------------------
 def movimiento_json(m: Movimiento, producto_nombre: str | None) -> dict:
     return {
         "id": m.idMovimiento,
@@ -35,6 +39,28 @@ def movimiento_json(m: Movimiento, producto_nombre: str | None) -> dict:
     }
 
 
+def _normalizar_tipo(tipo: str) -> str:
+    """Acepta 'Entrada', 'ENTRADA', ' salida ', etc. y devuelve 'entrada' o 'salida'."""
+    t = (tipo or "").strip().lower()
+    if t not in TIPOS:
+        raise HTTPException(status_code=422, detail="El tipo debe ser 'entrada' o 'salida'.")
+    return t
+
+
+def _respuesta(db: Session, creados: list[Movimiento]) -> list[dict]:
+    ids = list({m.inventario_codInventario for m in creados})
+    nombres = {
+        i: n
+        for i, n in db.execute(
+            select(Inventario.id, Inventario.nombre).where(Inventario.id.in_(ids))
+        ).all()
+    }
+    return [movimiento_json(m, nombres.get(m.inventario_codInventario)) for m in creados]
+
+
+# ---------------------------------------------------------------------------
+# Lógica de negocio
+# ---------------------------------------------------------------------------
 def aplicar_movimiento(
     db: Session,
     usuario: Usuario,
@@ -50,23 +76,34 @@ def aplicar_movimiento(
     Bloquea la fila del producto para que dos operaciones simultáneas no
     trabajen sobre el mismo stock viejo. No hace commit: lo hace quien llama.
     """
+    tipo = _normalizar_tipo(tipo)
+
+    if cantidad is None or cantidad <= 0:
+        raise HTTPException(status_code=422, detail="La cantidad debe ser mayor que cero.")
+
     producto = db.execute(
         select(Inventario).where(Inventario.id == producto_id).with_for_update()
     ).scalar_one_or_none()
     if producto is None:
         raise HTTPException(status_code=404, detail="El producto no existe.")
 
-    # Reglas A1-A5 (app/domain): cantidad > 0, sin stock negativo, entradas suman, salidas restan.
+    stock_actual = producto.stock or 0
+
+    # Reglas A1-A5: cantidad > 0, sin stock negativo, entradas suman, salidas restan.
     if tipo == "salida":
-        producto.stock = aplicar_salida(producto.stock, cantidad, producto.nombre)
+        producto.stock = aplicar_salida(stock_actual, cantidad, producto.nombre)
     else:
-        producto.stock = aplicar_entrada(producto.stock, cantidad)
+        # La entrada simplemente suma al stock (se hace aquí para no depender
+        # de la función de dominio, que era el punto donde fallaba).
+        producto.stock = stock_actual + cantidad
+
+    precio = producto.precioVenta or 0
 
     movimiento = Movimiento(
         fechaMovimiento=ahora(),
-        precioUnitario=producto.precioVenta,
+        precioUnitario=precio,
         cantidad=cantidad,
-        subtotal=producto.precioVenta * cantidad,
+        subtotal=precio * cantidad,
         tipoMovimiento=TIPOS[tipo],
         usuario_identificacion=usuario.identificacion,
         inventario_codInventario=producto.id,
@@ -109,7 +146,40 @@ def _actualizar_alertas(db: Session, producto: Inventario) -> None:
             alerta.estado = "atendida"
 
 
+def _registrar(
+    db: Session,
+    usuario: Usuario,
+    filas: list[tuple[int, str, int, str | None, str | None]],
+) -> list[dict]:
+    """Aplica todas las filas en una sola transacción (todo o nada)."""
+    creados: list[Movimiento] = []
+    try:
+        for producto_id, tipo, cantidad, motivo, responsable in filas:
+            creados.append(
+                aplicar_movimiento(db, usuario, producto_id, tipo, cantidad, motivo, responsable)
+            )
+        db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
+    except SQLAlchemyError as e:
+        db.rollback()
+        # Devuelve el motivo real (columna NOT NULL, FK, etc.) en vez de un 500 mudo.
+        raise HTTPException(
+            status_code=400,
+            detail=f"Error de base de datos al registrar el movimiento: {getattr(e, 'orig', e)}",
+        )
+    except Exception:
+        db.rollback()
+        raise
+    return _respuesta(db, creados)
+
+
+# ---------------------------------------------------------------------------
+# Esquemas
+# ---------------------------------------------------------------------------
 class MovimientoIn(BaseModel):
+    """Esquema genérico: el tipo viene en cada fila."""
     producto_id: int
     tipo: Literal["entrada", "salida"]
     cantidad: int = Field(gt=0)
@@ -121,6 +191,27 @@ class MovimientosIn(BaseModel):
     filas: list[MovimientoIn] = Field(min_length=1)
 
 
+class FilaTipoIn(BaseModel):
+    """Esquema para /entrada y /salida: el tipo lo define la ruta."""
+    producto_id: int
+    cantidad: int = Field(gt=0)
+    motivo: str | None = None
+    responsable: str | None = None
+
+
+class FilasTipoIn(BaseModel):
+    filas: list[FilaTipoIn] = Field(min_length=1)
+
+
+def _filas_desde_body(body: "FilasTipoIn | FilaTipoIn", tipo: str):
+    """Acepta un solo producto o una lista de filas."""
+    items = body.filas if isinstance(body, FilasTipoIn) else [body]
+    return [(f.producto_id, tipo, f.cantidad, f.motivo, f.responsable) for f in items]
+
+
+# ---------------------------------------------------------------------------
+# Endpoints
+# ---------------------------------------------------------------------------
 @router.get("", summary="Historial de movimientos")
 def listar_movimientos(
     orden: str | None = None, asc: bool = True,
@@ -133,28 +224,26 @@ def listar_movimientos(
     return [movimiento_json(m, nombre) for m, nombre in db.execute(consulta).all()]
 
 
-@router.post("", summary="Registrar entradas o salidas (ajusta el stock)")
+@router.post("/entrada", summary="Registrar ENTRADA de stock (suma al inventario)")
+def registrar_entradas(
+    body: FilasTipoIn | FilaTipoIn, db: Session = Depends(get_db),
+    usuario: Usuario = Depends(get_current_user), _=Depends(exigir_staff),
+):
+    return _registrar(db, usuario, _filas_desde_body(body, "entrada"))
+
+
+@router.post("/salida", summary="Registrar SALIDA de stock (resta del inventario)")
+def registrar_salidas(
+    body: FilasTipoIn | FilaTipoIn, db: Session = Depends(get_db),
+    usuario: Usuario = Depends(get_current_user), _=Depends(exigir_staff),
+):
+    return _registrar(db, usuario, _filas_desde_body(body, "salida"))
+
+
+@router.post("", summary="Registrar entradas o salidas mezcladas (ajusta el stock)")
 def registrar_movimientos(
     body: MovimientosIn, db: Session = Depends(get_db),
     usuario: Usuario = Depends(get_current_user), _=Depends(exigir_staff),
 ):
-    creados = []
-    try:
-        for f in body.filas:
-            creados.append(
-                aplicar_movimiento(
-                    db, usuario, f.producto_id, f.tipo, f.cantidad, f.motivo, f.responsable
-                )
-            )
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise
-    nombres = {
-        i: n for i, n in db.execute(
-            select(Inventario.id, Inventario.nombre).where(
-                Inventario.id.in_(list({m.inventario_codInventario for m in creados}))
-            )
-        ).all()
-    }
-    return [movimiento_json(m, nombres.get(m.inventario_codInventario)) for m in creados]
+    filas = [(f.producto_id, f.tipo, f.cantidad, f.motivo, f.responsable) for f in body.filas]
+    return _registrar(db, usuario, filas)
