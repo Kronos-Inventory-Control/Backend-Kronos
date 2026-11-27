@@ -1,5 +1,3 @@
-<<<<<<< Updated upstream
-=======
 """
 MAPA DE ENDPOINTS (todos cuelgan de /api/v1)
 
@@ -23,7 +21,6 @@ users.py            POST/GET /users · GET/PATCH /users/{id} · PATCH /users/{id
 Utilidades compartidas (roles, ids, fechas): common.py
 Documentación interactiva: http://127.0.0.1:8000/docs
 """
->>>>>>> Stashed changes
 from fastapi import APIRouter
 
 api_router = APIRouter()
