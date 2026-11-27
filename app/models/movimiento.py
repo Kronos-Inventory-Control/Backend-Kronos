@@ -1,7 +1,7 @@
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, ForeignKey, Integer, Numeric
+from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.infrastructure.database.base import Base
@@ -61,9 +61,20 @@ class Movimiento(Base):
         comment="Clave foránea que determina el producto relacionado con el movimiento.",
     )
 
-    detalleVenta_idDetalleVenta: Mapped[int] = mapped_column(
+    detalleVenta_idDetalleVenta: Mapped[int | None] = mapped_column(
         Integer,
         ForeignKey("detalleVentas.idDetalleVenta", name="fk_movimiento_detalleVenta1"),
-        nullable=False,
+        nullable=True,
         comment="Clave foránea que relaciona el movimiento con el detalle de venta correspondiente.",
+    )
+
+    motivo: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        comment="Motivo o detalle del movimiento (entrada manual, salida, venta en línea...).",
+    )
+    responsable: Mapped[str | None] = mapped_column(
+        String(120),
+        nullable=True,
+        comment="Nombre de quien realizó o a quien se atribuye el movimiento.",
     )
