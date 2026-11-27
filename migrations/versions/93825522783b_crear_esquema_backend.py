@@ -1,8 +1,8 @@
-"""crear Esquema Backend
+"""crear esquema backend
 
-Revision ID: 19343dd87781
+Revision ID: 93825522783b
 Revises: 
-Create Date: 2026-11-09 20:19:37.200759
+Create Date: 2026-11-10 19:40:59.691434
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import mysql
 
 # revision identifiers, used by Alembic.
-revision: str = '19343dd87781'
+revision: str = '93825522783b'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
